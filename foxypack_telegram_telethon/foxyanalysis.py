@@ -32,7 +32,7 @@ class FoxyTelegramAnalysis(FoxyAnalysis):
         return None
 
     @staticmethod
-    def get_code(link: str) -> str | None:
+    def get_code(link: str) -> str:
         m = re.match(r"https?://t\.me/(?:joinchat/|\+)([^/]+)/(\d+)", link)
         if m:
             return f"{m.group(1)}/{m.group(2)}"
@@ -43,7 +43,7 @@ class FoxyTelegramAnalysis(FoxyAnalysis):
 
         m = re.match(r"https?://t\.me/([^/]+)(?:/(\d+))?", link)
         if not m:
-            return None
+            return ''
 
         channel, post_id = m.group(1), m.group(2)
         return f"{channel}/{post_id}" if post_id else channel

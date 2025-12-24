@@ -1,7 +1,7 @@
 import asyncio
+from typing import Union
 
 from foxy_entities import EntitiesController
-from foxy_entities.exceptions import PresenceObjectException
 from foxypack import (
     FoxyStat,
     InternalCollectionException,
@@ -20,27 +20,33 @@ from foxypack_telegram_telethon.answers import (
     TelegramPostAnswersStatistics,
 )
 from foxypack_telegram_telethon.entities import TelegramAccount
+from foxypack_telegram_telethon.utils import as_telegram_analysis
+
+TelegramStatistics = Union[
+    TelegramChannelAnswersStatistics,
+    TelegramPostAnswersStatistics,
+]
 
 
 class FoxyTelegramStat(FoxyStat):
-    def __init__(self, entities_controller: EntitiesController | None = None):
+    def __init__(self, entities_controller: EntitiesController | None = None) -> None:
         self._entities_controller = entities_controller
 
     @override
-    def get_statistics(self, analysis: AnswersAnalysis):
+    def get_statistics(self, analysis: AnswersAnalysis) -> TelegramStatistics:
         return asyncio.run(self._get_statistics_async_internal(analysis))
 
     @override
-    async def get_statistics_async(self, analysis: AnswersAnalysis):
+    async def get_statistics_async(
+        self, analysis: AnswersAnalysis
+    ) -> TelegramStatistics:
         return await self._get_statistics_async_internal(analysis)
 
     def _get_account(self) -> TelegramAccount:
         if self._entities_controller is None:
             raise InternalCollectionException
-        try:
-            return self._entities_controller.get_entity(TelegramAccount)
-        except PresenceObjectException:
-            raise InternalCollectionException
+
+        return self._entities_controller.get_entity(TelegramAccount)
 
     async def _get_client(self) -> TelegramClient:
         account = self._get_account()
@@ -52,7 +58,10 @@ class FoxyTelegramStat(FoxyStat):
         )
 
         await client.start()
-        self._entities_controller.add_entity(account)
+
+        if self._entities_controller is not None:
+            self._entities_controller.add_entity(account)
+
         return client
 
     @staticmethod
@@ -61,7 +70,6 @@ class FoxyTelegramStat(FoxyStat):
         channel: Channel,
         analysis: AnswersAnalysis,
     ) -> TelegramChannelAnswersStatistics:
-
         full = await client(GetFullChannelRequest(channel))
 
         return TelegramChannelAnswersStatistics(
@@ -77,7 +85,11 @@ class FoxyTelegramStat(FoxyStat):
         )
 
     @staticmethod
-    def _post_from_message(message: Message, channel: Channel, analysis: AnswersAnalysis):
+    def _post_from_message(
+        message: Message,
+        channel: Channel,
+        analysis: AnswersAnalysis,
+    ) -> TelegramPostAnswersStatistics:
         return TelegramPostAnswersStatistics(
             title=(message.message or "")[:50],
             post_id=message.id,
@@ -94,16 +106,17 @@ class FoxyTelegramStat(FoxyStat):
 
     @staticmethod
     async def _resolve_private_channel(
-            client: TelegramClient, invite_hash: str
-    ):
+        client: TelegramClient,
+        invite_hash: str,
+    ) -> Channel:
         result = await client(ImportChatInviteRequest(invite_hash))
         return result.chats[0]
 
     async def _get_statistics_async_internal(
-            self, analysis: AnswersAnalysis
-    ):
-        if analysis.social_platform != "telegram":
-            raise InternalCollectionException
+        self,
+        analysis: AnswersAnalysis,
+    ) -> TelegramStatistics:
+        analysis = as_telegram_analysis(analysis)
 
         client = await self._get_client()
 
@@ -127,4 +140,4 @@ class FoxyTelegramStat(FoxyStat):
             message = await client.get_messages(channel, ids=int(post_id))
             return self._post_from_message(message, channel, analysis)
 
-        raise InternalCollectionException
+        raise ValueError(f"Unsupported telegram content type: {analysis.type_content}")
